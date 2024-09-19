@@ -806,8 +806,8 @@ def calculate_and_plot_cpi(df2, asin_list, start_date, end_date, price_min, pric
         result_df['Date'] = pd.to_datetime(result_df['Date'], format='%Y-%m-%d')
         result_df = pd.merge(result_df, napqueen_df[['Date', 'ASIN', 'ad_spend', 'orderedunits']], on=['Date', 'ASIN'], how='left')
 
-        st.success("Merging successful! Displaying the merged dataframe:")
-        st.dataframe(result_df)
+        #st.success("Merging successful! Displaying the merged dataframe:")
+        #st.dataframe(result_df)
 
     except KeyError as e:
         st.error(f"KeyError: {e} - Likely missing columns during merging.")
@@ -855,7 +855,7 @@ def plot_competitor_vs_null_analysis(competitor_count_per_day, null_price_count_
 def plot_results(result_df, asin_list, start_date, end_date):
 
 
-    result_df.to_csv('plot_csv.csv')
+    #result_df.to_csv('plot_csv.csv')
 
 
     for asin in asin_list:
