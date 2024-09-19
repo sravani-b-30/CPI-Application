@@ -1,7 +1,6 @@
 import pandas as pd
 import ast
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.dates as mdates
 import numpy as np
 import nltk
