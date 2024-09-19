@@ -264,8 +264,8 @@ def load_and_preprocess_data():
     #global show_features_df
 
     # Load data only once and perform preprocessing steps
-    df_serp = pd.read_csv("C:\\Users\\bande\\Streamlit App\\AMZ_SERPDATA_MATTRESS(Modified).csv", on_bad_lines='skip')
-    df_scrapped = pd.read_csv("C:\\Users\\bande\\Streamlit App\\final_scraped_mattress_updated.csv", on_bad_lines='skip')
+    df_serp = pd.read_csv("AMZ_SERPDATA_MATTRESS(Modified).csv", on_bad_lines='skip')
+    df_scrapped = pd.read_csv("final_scraped_mattress_updated.csv", on_bad_lines='skip')
 
     df_serp['asin'] = df_serp['asin'].str.upper()
     df_scrapped['ASIN'] = df_scrapped['ASIN'].str.upper()
@@ -278,7 +278,7 @@ def load_and_preprocess_data():
     df_merged_cleaned = df_merged_cleaned.drop('asin', axis=1)
 
     # Load additional dataset for time-series analysis
-    df2 = pd.read_csv("C:\\Users\\bande\\Streamlit App\\combined_asin_price_data.csv")
+    df2 = pd.read_csv("combined_asin_price_data.csv")
     # df2 = df2.drop_duplicates(subset=['asin'], keep='first')
     df2['asin'] = df2['asin'].str.upper()
     df_merged_cleaned['ASIN'] = df_merged_cleaned['ASIN'].str.upper()
@@ -309,7 +309,7 @@ def load_and_preprocess_data():
     # Create a new column 'Product Dimensions' by extracting from 'Product Details'
     df['Product Dimensions'] = df['Product Details'].apply(extract_dimensions)
 
-    reference_df = pd.read_csv('C:\\Users\\bande\\Streamlit App\\product_dimension_size_style_reference.csv')
+    reference_df = pd.read_csv('product_dimension_size_style_reference.csv')
 
     merged_df = df.merge(reference_df, on='Product Dimensions', how='left', suffixes=('', '_ref'))
 
@@ -799,7 +799,7 @@ def calculate_and_plot_cpi(df2, asin_list, start_date, end_date, price_min, pric
 
     # Load additional data for merging (ads data, for example)
     try:
-        napqueen_df = pd.read_csv("C:\\Users\\bande\\Streamlit App\\ads_data_sep15.csv")
+        napqueen_df = pd.read_csv("ads_data_sep15.csv")
         napqueen_df['date'] = pd.to_datetime(napqueen_df['date'], format='%d-%m-%Y', errors='coerce')
         napqueen_df = napqueen_df.rename(columns=({'date': 'Date', 'asin': 'ASIN'}))
 
