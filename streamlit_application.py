@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 import streamlit as st 
 
 
-nltk.download('punkt')
+nltk.download('punkt', quiet=True)
 
 
 def format_details(details):
@@ -321,10 +321,10 @@ def load_and_preprocess_data():
     merged_df['date'] = pd.to_datetime(merged_df['date'])
     df_ext = merged_df[merged_df['date']==merged_df['date'].max()]
 
-    df_ext['size_extracted'] = df_ext['Size'].notnull()
-    df_ext['style_extracted'] = df_ext['Style'].notnull()
+    df_ext.loc[:,'size_extracted'] = df_ext['Size'].notnull()
+    df_ext.loc[:,'style_extracted'] = df_ext['Style'].notnull()
 
-    df_ext['extraction_scenario'] = df_ext.apply(
+    df_ext.loc[:,'extraction_scenario'] = df_ext.apply(
         lambda row: (
             'Both Size and Style Extracted' if row['size_extracted'] and row['style_extracted'] else
             'Neither Size nor Style Extracted' if not row['size_extracted'] and not row['style_extracted'] else
@@ -350,10 +350,10 @@ def load_and_preprocess_data():
     only_style_extracted_df = df_ext[df_ext['extraction_scenario'] == 'Only Style Extracted']
     neither_extracted_df = df_ext[df_ext['extraction_scenario'] == 'Neither Size nor Style Extracted']
 
-    both_extracted_df.to_csv('Size_and_Style_Extracted.csv', columns=output_columns, index=False)
-    only_size_extracted_df.to_csv('Size_Extracted.csv', columns=output_columns, index=False)
-    only_style_extracted_df.to_csv('Style_Extracted.csv', columns=output_columns, index=False)
-    neither_extracted_df.to_csv('Size_Nor_Style_extracted.csv', columns=output_columns, index=False)
+    #both_extracted_df.to_csv('Size_and_Style_Extracted.csv', columns=output_columns, index=False)
+    #only_size_extracted_df.to_csv('Size_Extracted.csv', columns=output_columns, index=False)
+    #only_style_extracted_df.to_csv('Style_Extracted.csv', columns=output_columns, index=False)
+    #neither_extracted_df.to_csv('Size_Nor_Style_extracted.csv', columns=output_columns, index=False)
 
     df = merged_df.copy()
 
@@ -362,11 +362,11 @@ def load_and_preprocess_data():
     combination_counts = combinations_df.value_counts()
     combination_counts_df = combination_counts.reset_index(name='count')
     combination_counts_df = combination_counts_df.sort_values(by='count', ascending=False)
-    combination_counts_df.to_csv('combination_zero.csv')
+    #combination_counts_df.to_csv('combination_zero.csv')
 
 
 
-    df.to_csv('processed_data.csv',index=False)
+    #df.to_csv('processed_data.csv',index=False)
     #show_features_df = df.copy()
     return df
 
@@ -458,7 +458,7 @@ def find_similar_products(asin, price_min, price_max, df, compulsory_features, s
         'Title Score', 'Description Score', 'Compare Details', 'Details Comparison',
         'Title Comparison', 'Description Comparison', 'Brand'
     ])
-    similarities_df.to_csv('similarity_df.csv')
+    #similarities_df.to_csv('similarity_df.csv')
     return similarities
 
 def run_analysis(asin, price_min, price_max, target_price, compulsory_features, same_brand_option, df):
