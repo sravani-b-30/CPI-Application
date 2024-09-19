@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.dates as mdates
 import numpy as np
-import mplcursors
 import nltk
 from nltk.tokenize import word_tokenize
 from datetime import datetime, timedelta
