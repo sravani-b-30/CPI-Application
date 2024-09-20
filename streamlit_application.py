@@ -13,6 +13,8 @@ import pandas as pd
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 import streamlit as st 
+import dask.dataframe as dd
+from dask import delayed
 
 
 nltk.download('punkt', quiet=True)
@@ -261,113 +263,109 @@ def extract_size(title):
 #show_features_df = None
 @st.cache_data
 def load_and_preprocess_data():
-    #global show_features_df
+    # Load the data using Dask
+    df_serp = dd.read_csv("AMZ_SERPDATA_MATTRESS(Modified).csv", on_bad_lines='skip')
+    df_scrapped = dd.read_csv("final_scraped_mattress_updated.csv", on_bad_lines='skip')
 
-    # Load data only once and perform preprocessing steps
-    df_serp = pd.read_csv("AMZ_SERPDATA_MATTRESS(Modified).csv", on_bad_lines='skip')
-    df_scrapped = pd.read_csv("final_scraped_mattress_updated.csv", on_bad_lines='skip')
-
+    # Convert ASIN columns to uppercase
     df_serp['asin'] = df_serp['asin'].str.upper()
     df_scrapped['ASIN'] = df_scrapped['ASIN'].str.upper()
 
-    # Merge and clean up
+    # Drop duplicates
     df_serp_cleaned = df_serp.drop_duplicates(subset='asin')
     df_scrapped_cleaned = df_scrapped.drop_duplicates(subset='ASIN')
-    df_merged_cleaned = pd.merge(df_scrapped_cleaned, df_serp_cleaned[['asin', 'product_title', 'brand']],
+
+    # Merge the dataframes
+    df_merged_cleaned = dd.merge(df_scrapped_cleaned, df_serp_cleaned[['asin', 'product_title', 'brand']],
                                  left_on='ASIN', right_on='asin', how='left')
     df_merged_cleaned = df_merged_cleaned.drop('asin', axis=1)
 
     # Load additional dataset for time-series analysis
-    df2 = pd.read_csv("AMZ_CDS_MATTRESS.csv")
-    # df2 = df2.drop_duplicates(subset=['asin'], keep='first')
+    df2 = dd.read_csv("price_data_sept_cleaned.csv", on_bad_lines='skip')
     df2['asin'] = df2['asin'].str.upper()
-    df_merged_cleaned['ASIN'] = df_merged_cleaned['ASIN'].str.upper()
 
     # Merge competitor prices with df2
-    df = pd.merge(df_merged_cleaned, df2[['asin', 'price', 'date']], left_on='ASIN', right_on='asin', how='left')
-    # Parse the 'Product Details', 'Glance Icon Details', 'Option', and 'Drop Down' columns
-    df['Product Details'] = df['Product Details'].apply(parse_dict_str)
-    df['Glance Icon Details'] = df['Glance Icon Details'].apply(parse_dict_str)
+    df_merged_cleaned['ASIN'] = df_merged_cleaned['ASIN'].str.upper()
+    df = dd.merge(df_merged_cleaned, df2[['asin', 'price', 'date']], left_on='ASIN', right_on='asin', how='left')
 
-    df['Style'] = df['product_title'].apply(extract_style)
-    df['Size'] = df['product_title'].apply(extract_size)
+    # Apply functions in Dask using map_partitions
+    df['Product Details'] = df['Product Details'].map_partitions(lambda part: part.apply(parse_dict_str))
+    df['Glance Icon Details'] = df['Glance Icon Details'].map_partitions(lambda part: part.apply(parse_dict_str))
+
+    # Apply extract_style and extract_size
+    df['Style'] = df['product_title'].map_partitions(lambda part: part.apply(extract_style))
+    df['Size'] = df['product_title'].map_partitions(lambda part: part.apply(extract_size))
+
 
     def update_product_details(row):
         details = row['Product Details']
         details['Style'] = row['Style']
         details['Size'] = row['Size']
         return details
-
-    df['Product Details'] = df.apply(update_product_details, axis=1)
-
+    
+    # Update 'Product Details' by adding Style and Size (row-wise)
+    df['Product Details'] = df.map_partitions(lambda part: part.apply(update_product_details, axis=1))
+    
     def extract_dimensions(details):
         # Check if 'Product Dimensions' exists in the dictionary
         if isinstance(details, dict):
             return details.get('Product Dimensions', None)
         return None
 
-    # Create a new column 'Product Dimensions' by extracting from 'Product Details'
-    df['Product Dimensions'] = df['Product Details'].apply(extract_dimensions)
+    # Extract 'Product Dimensions'
+    df['Product Dimensions'] = df['Product Details'].map_partitions(lambda part: part.apply(extract_dimensions))
 
-    reference_df = pd.read_csv('product_dimension_size_style_reference.csv')
+    # Load reference data
+    reference_df = dd.read_csv('product_dimension_size_style_reference.csv')
 
-    merged_df = df.merge(reference_df, on='Product Dimensions', how='left', suffixes=('', '_ref'))
+    # Merge with reference dataframe
+    merged_df = dd.merge(df, reference_df, on='Product Dimensions', how='left', suffixes=('', '_ref'))
 
-    # Fill missing values in 'Size' and 'Style' columns with the values from the reference DataFrame
+    # Fill missing values for Size and Style
     merged_df['Size'] = merged_df['Size'].fillna(merged_df['Size_ref'])
     merged_df['Style'] = merged_df['Style'].fillna(merged_df['Style_ref'])
 
+    # Convert date to datetime
+    merged_df['date'] = dd.to_datetime(merged_df['date'])
 
-    merged_df['date'] = pd.to_datetime(merged_df['date'])
-    df_ext = merged_df[merged_df['date']==merged_df['date'].max()]
+    # Filter the most recent data (assuming this is time-series data)
+    df_ext = merged_df[merged_df['date'] == merged_df['date'].max().compute()]
 
-    df_ext.loc[:,'size_extracted'] = df_ext['Size'].notnull()
-    df_ext.loc[:,'style_extracted'] = df_ext['Style'].notnull()
+    # Extract size and style information
+    df_ext['size_extracted'] = df_ext['Size'].notnull()
+    df_ext['style_extracted'] = df_ext['Style'].notnull()
 
-    df_ext.loc[:,'extraction_scenario'] = df_ext.apply(
+    # Add extraction scenarios (row-wise)
+    df_ext['extraction_scenario'] = df_ext.map_partitions(lambda part: part.apply(
         lambda row: (
             'Both Size and Style Extracted' if row['size_extracted'] and row['style_extracted'] else
             'Neither Size nor Style Extracted' if not row['size_extracted'] and not row['style_extracted'] else
             'Only Size Extracted' if row['size_extracted'] and not row['style_extracted'] else
             'Only Style Extracted'
         ), axis=1
-    )
+    ))
 
-    scenario_counts = df_ext['extraction_scenario'].value_counts()
+    # Compute scenario counts (you may need to compute it as it involves aggregation)
+    scenario_counts = df_ext['extraction_scenario'].value_counts().compute()
 
-    total_products = df_ext.shape[0]
+    # Calculate percentages
+    total_products = df_ext.shape[0].compute()
     scenario_percentages = (scenario_counts / total_products) * 100
 
     for scenario, count in scenario_counts.items():
         percentage = scenario_percentages[scenario]
         print(f"{scenario}: {count} products ({percentage:.2f}%)")
 
-    output_columns = ['ASIN', 'product_title', 'Drop Down', 'Product Details', 'Glance Icon Details', 'Description',
-                      'Option', 'Rating', 'Review Count','Size','Style','Product Dimensions','Size_ref','Style_ref']
-
-    both_extracted_df = df_ext[df_ext['extraction_scenario'] == 'Both Size and Style Extracted']
-    only_size_extracted_df = df_ext[df_ext['extraction_scenario'] == 'Only Size Extracted']
-    only_style_extracted_df = df_ext[df_ext['extraction_scenario'] == 'Only Style Extracted']
-    neither_extracted_df = df_ext[df_ext['extraction_scenario'] == 'Neither Size nor Style Extracted']
-
-    #both_extracted_df.to_csv('Size_and_Style_Extracted.csv', columns=output_columns, index=False)
-    #only_size_extracted_df.to_csv('Size_Extracted.csv', columns=output_columns, index=False)
-    #only_style_extracted_df.to_csv('Style_Extracted.csv', columns=output_columns, index=False)
-    #neither_extracted_df.to_csv('Size_Nor_Style_extracted.csv', columns=output_columns, index=False)
-
+    # Return the merged dataframe after computation
     df = merged_df.copy()
 
+    # Compute size/style combinations
     df_d = df[['ASIN', 'Size', 'Style']].drop_duplicates(subset=['ASIN'])
     combinations_df = df_d[['Size', 'Style']]
-    combination_counts = combinations_df.value_counts()
-    combination_counts_df = combination_counts.reset_index(name='count')
+    combination_counts = combinations_df.value_counts().compute()  # Compute the result
+    combination_counts_df = combination_counts.reset_index(name='count').compute()
     combination_counts_df = combination_counts_df.sort_values(by='count', ascending=False)
-    #combination_counts_df.to_csv('combination_zero.csv')
 
-
-
-    #df.to_csv('processed_data.csv',index=False)
-    #show_features_df = df.copy()
     return df
 
 # Use session state to store the DataFrame and ensure it's available across sessions
@@ -394,9 +392,9 @@ def check_compulsory_features_match(target_details, compare_details, compulsory_
 
 def find_similar_products(asin, price_min, price_max, df, compulsory_features, same_brand_option):
     print(compulsory_features)
-    df['identified_brand'] = df['product_title'].apply(extract_brand_from_title)
+    df['identified_brand'] = df['product_title'].map_partitions(lambda part: part.apply(extract_brand_from_title))
 
-    target_product = df[df['ASIN'] == asin].iloc[0]
+    target_product = df[df['ASIN'] == asin].compute().iloc[0]
     print(target_product)
     print("product")
     print(type(target_product))
