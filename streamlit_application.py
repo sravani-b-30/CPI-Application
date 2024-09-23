@@ -20,7 +20,7 @@ from dask import delayed
 nltk.download('punkt', quiet=True)
 
 from dask.distributed import Client
-client = Client(processes=False, threads_per_worker=4, n_workers=1, memory_limit='2GB')
+client = Client(processes=False, threads_per_worker=4, n_workers=1, memory_limit='4GB')
 
 
 def format_details(details):
