@@ -15,13 +15,23 @@ from concurrent.futures import ThreadPoolExecutor
 import streamlit as st 
 import dask.dataframe as dd
 from dask import delayed
+import os
 
 
 nltk.download('punkt', quiet=True)
 
 from dask.distributed import Client
 client = Client(processes=False, threads_per_worker=4, n_workers=1, memory_limit='3GB')
+# Define the path for the temp directory
+#temp_dir = '/tmp/dask-temp'  # This works for Linux servers or local deployment on Unix-like systems
+if os.name == 'nt':  # Windows
+    temp_dir = 'C:/dask-temp'
 
+# Create the directory if it doesn't exist
+os.makedirs(temp_dir, exist_ok=True)
+
+# Initialize Dask client
+client = Client(memory_limit='2GB', local_directory=temp_dir)
 
 def format_details(details):
     return "\n".join([f"{key}: {value}" for key, value in details.items()])
