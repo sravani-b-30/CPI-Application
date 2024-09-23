@@ -379,7 +379,7 @@ def load_and_preprocess_data():
 
     df_d = df[['ASIN', 'Size', 'Style']].drop_duplicates(subset=['ASIN'])
     combinations_df = df_d[['Size', 'Style']]
-    combination_counts = combinations_df.value_counts().compute()
+    combination_counts = combinations_df.groupby(['Size', 'Style']).size().compute()
     combination_counts_df = combination_counts.reset_index(name='count')
     combination_counts_df = combination_counts_df.sort_values(by='count', ascending=False)
     #combination_counts_df.to_csv('combination_zero.csv')
