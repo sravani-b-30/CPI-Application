@@ -19,6 +19,9 @@ from dask import delayed
 
 nltk.download('punkt', quiet=True)
 
+from dask.distributed import Client
+client = Client(processes=False, threads_per_worker=4, n_workers=1, memory_limit='2GB')
+
 
 def format_details(details):
     return "\n".join([f"{key}: {value}" for key, value in details.items()])
@@ -264,8 +267,8 @@ def extract_size(title):
 @st.cache_data
 def load_and_preprocess_data():
     # Load data using Dask for large datasets
-    df_serp = dd.read_csv("AMZ_SERPDATA_MATTRESS(Modified).csv", blocksize="64MB", assume_missing=True)
-    df_scrapped = dd.read_csv("final_scraped_mattress_updated.csv", blocksize="64MB", assume_missing=True)
+    df_serp = dd.read_csv("AMZ_SERPDATA_MATTRESS(Modified).csv", blocksize="16MB", assume_missing=True)
+    df_scrapped = dd.read_csv("final_scraped_mattress_updated.csv", blocksize="16MB", assume_missing=True)
 
     # Convert ASIN to uppercase in both datasets
     df_serp['asin'] = df_serp['asin'].str.upper()
@@ -282,7 +285,7 @@ def load_and_preprocess_data():
     df_merged_cleaned = df_merged_cleaned.drop('asin', axis=1)
 
     # Load additional dataset for time-series analysis
-    df2 = dd.read_csv("price_data_sept_cleaned.csv", blocksize="64MB", assume_missing=True)
+    df2 = dd.read_csv("price_data_sept_cleaned.csv", blocksize="16MB", assume_missing=True)
     df2['asin'] = df2['asin'].str.upper()
 
     # Merge competitor prices with df2 using Dask
