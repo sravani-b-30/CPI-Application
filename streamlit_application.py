@@ -219,7 +219,7 @@ def calculate_cpi_score_updated(target_price, competitor_prices):
 
 
 def extract_brand_from_title(title):
-    if pd.isna(title) or not title:
+    if dd.isna(title) or not title:
         return 'unknown'
     return title.split()[0].lower()
 
@@ -451,7 +451,7 @@ def find_similar_products(asin, price_min, price_max, df, compulsory_features, s
 
     similarities = sorted(similarities, key=lambda x: x[3], reverse=True)
     print(len(similarities))
-    similarities_df = pd.DataFrame(similarities, columns=[
+    similarities_df = dd.DataFrame(similarities, columns=[
         'ASIN', 'Product Title', 'Price', 'Weighted Score', 'Details Score',
         'Title Score', 'Description Score', 'Compare Details', 'Details Comparison',
         'Title Comparison', 'Description Comparison', 'Brand'
@@ -472,7 +472,7 @@ def run_analysis(asin, price_min, price_max, target_price, compulsory_features, 
     product_dimension = target_product['Product Details'].get('Product Dimensions', 'N/A')
 
     # Create a DataFrame to store competitor details
-    competitor_details_df = pd.DataFrame(similar_products, columns=[
+    competitor_details_df = dd.DataFrame(similar_products, columns=[
         'ASIN', 'Title', 'Price', 'Weighted Score', 'Details Score',
         'Title Score', 'Description Score', 'Product Details',
         'Details Comparison', 'Title Comparison', 'Description Comparison', 'Brand'
@@ -623,7 +623,7 @@ def perform_scatter_plot(asin, target_price, price_min, price_max, compulsory_fe
 
     # Filter for competitors with the same size and style
     filtered_df = df[(df['Size'] == target_size) & (df['Style'] == target_style)]
-    filtered_df['date'] = pd.to_datetime(filtered_df['date'], errors='coerce')
+    filtered_df['date'] = dd.to_datetime(filtered_df['date'], errors='coerce')
     filtered_df = filtered_df[filtered_df['date'] == filtered_df['date'].max()]
     price_null_count = filtered_df['price'].isnull().sum()
 
@@ -705,7 +705,7 @@ def process_date(df2, asin, date_str, price_min, price_max, compulsory_features,
     This function processes data for a single date and returns the results.
     """
     df_combined = df2.copy()
-    df_combined['date'] = pd.to_datetime(df_combined['date'], format='%Y-%m-%d')
+    df_combined['date'] = dd.to_datetime(df_combined['date'], format='%Y-%m-%d')
     df_current_day = df_combined[df_combined['date'] == date_str]
 
     if df_current_day.empty:
@@ -760,7 +760,7 @@ def calculate_and_plot_cpi(df2, asin_list, start_date, end_date, price_min, pric
         # Use ThreadPoolExecutor for parallel processing
     with ThreadPoolExecutor() as executor:
         futures = [
-            executor.submit(process_date, df2, asin, pd.to_datetime(current_date), price_min, price_max, compulsory_features, same_brand_option)
+            executor.submit(process_date, df2, asin, dd.to_datetime(current_date), price_min, price_max, compulsory_features, same_brand_option)
             for current_date in dates_to_process
         ]
         for future in futures:
@@ -783,7 +783,7 @@ def calculate_and_plot_cpi(df2, asin_list, start_date, end_date, price_min, pric
                 st.session_state['competitor_files'][date_str] = csv_filename
 
             # Create result DataFrame and store in session state
-            result_df = pd.DataFrame(all_results,
+            result_df = dd.DataFrame(all_results,
                                  columns=['Date', 'ASIN', 'Target Price', 'CPI Score', 'Number Of Competitors Found',
                                           'Size', 'Product Dimension', 'Competitor Prices', 'Dynamic CPI'])
             st.session_state['result_df'] = result_df
@@ -797,12 +797,12 @@ def calculate_and_plot_cpi(df2, asin_list, start_date, end_date, price_min, pric
 
     # Load additional data for merging (ads data, for example)
     try:
-        napqueen_df = pd.read_csv("ads_data_sep15.csv")
-        napqueen_df['date'] = pd.to_datetime(napqueen_df['date'], format='%d-%m-%Y', errors='coerce')
+        napqueen_df = dd.read_csv("ads_data_sep15.csv")
+        napqueen_df['date'] = dd.to_datetime(napqueen_df['date'], format='%d-%m-%Y', errors='coerce')
         napqueen_df = napqueen_df.rename(columns=({'date': 'Date', 'asin': 'ASIN'}))
 
-        result_df['Date'] = pd.to_datetime(result_df['Date'], format='%Y-%m-%d')
-        result_df = pd.merge(result_df, napqueen_df[['Date', 'ASIN', 'ad_spend', 'orderedunits']], on=['Date', 'ASIN'], how='left')
+        result_df['Date'] = dd.to_datetime(result_df['Date'], format='%Y-%m-%d')
+        result_df = dd.merge(result_df, napqueen_df[['Date', 'ASIN', 'ad_spend', 'orderedunits']], on=['Date', 'ASIN'], how='left')
 
         #st.success("Merging successful! Displaying the merged dataframe:")
         #st.dataframe(result_df)
@@ -822,13 +822,13 @@ def calculate_and_plot_cpi(df2, asin_list, start_date, end_date, price_min, pric
         st.write(f"Competitor Data for {date_str}")
         try:
             # Load and display the CSV file for this date
-            competitor_data = pd.read_csv(csv_filename)
+            competitor_data = dd.read_csv(csv_filename)
             st.dataframe(competitor_data)
         except Exception as e:
             st.error(f"Error loading file for {date_str}: {e}")
 
 def plot_competitor_vs_null_analysis(competitor_count_per_day, null_price_count_per_day, start_date, end_date):
-    dates = pd.date_range(start=start_date, end=end_date)
+    dates = dd.date_range(start=start_date, end=end_date)
 
     fig, ax1 = plt.subplots(figsize=(12, 6))
 
@@ -864,7 +864,7 @@ def plot_results(result_df, asin_list, start_date, end_date):
         # Plot CPI Score on ax1
         ax1.set_xlabel('Date')
         ax1.set_ylabel('CPI Score', color='tab:blue')
-        ax1.plot(pd.to_datetime(asin_results['Date']), asin_results['CPI Score'], label='CPI Score', color='tab:blue')
+        ax1.plot(dd.to_datetime(asin_results['Date']), asin_results['CPI Score'], label='CPI Score', color='tab:blue')
         ax1.tick_params(axis='y', labelcolor='tab:blue')
         ax1.xaxis.set_major_formatter(mdates.DateFormatter('%d-%m-%Y'))
         ax1.xaxis.set_major_locator(mdates.DayLocator())
@@ -874,21 +874,21 @@ def plot_results(result_df, asin_list, start_date, end_date):
         # Plot Price on ax2
         ax2 = ax1.twinx()
         ax2.set_ylabel('Price', color='tab:orange')
-        ax2.plot(pd.to_datetime(asin_results['Date']), asin_results['Target Price'], label='Price', linestyle='--', color='tab:orange')
+        ax2.plot(dd.to_datetime(asin_results['Date']), asin_results['Target Price'], label='Price', linestyle='--', color='tab:orange')
         ax2.tick_params(axis='y', labelcolor='tab:orange')
 
         # Plot Ad Spend on ax3
         ax3 = ax1.twinx()
         ax3.spines['right'].set_position(('outward', 60))  # Offset the axis to the right
         ax3.set_ylabel('Ad Spend', color='tab:green')
-        ax3.plot(pd.to_datetime(asin_results['Date']), asin_results['ad_spend'], label='Ad Spend', linestyle='-.', color='tab:green')
+        ax3.plot(dd.to_datetime(asin_results['Date']), asin_results['ad_spend'], label='Ad Spend', linestyle='-.', color='tab:green')
         ax3.tick_params(axis='y', labelcolor='tab:green')
 
         # Plot Ordered Units on ax4
         ax4 = ax1.twinx()
         ax4.spines['right'].set_position(('outward', 120))  # Offset further to the right
         ax4.set_ylabel('Ordered Units', color='tab:purple')
-        ax4.plot(pd.to_datetime(asin_results['Date']), asin_results['orderedunits'], label='Ordered Units', color='tab:purple')
+        ax4.plot(dd.to_datetime(asin_results['Date']), asin_results['orderedunits'], label='Ordered Units', color='tab:purple')
         ax4.tick_params(axis='y', labelcolor='tab:purple')
 
         # Add title and ensure everything fits
@@ -942,7 +942,7 @@ def run_analysis_button(df, asin, price_min, price_max, target_price, start_date
 
     st.write("Inside Analysis")
 
-    df['date'] = pd.to_datetime(df['date'], errors='coerce')
+    df['date'] =dd.to_datetime(df['date'], errors='coerce')
     df_recent = df[df['date'] == df['date'].max()]
     df_recent = df_recent.drop_duplicates(subset=['asin'])
 
