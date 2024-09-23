@@ -299,8 +299,15 @@ def load_and_preprocess_data():
     # Function to update product details, using Dask's row-wise apply
     def update_product_details(row):
         details = row['Product Details']
-        details['Style'] = row['Style']
-        details['Size'] = row['Size']
+        # Check if 'details' is a dictionary
+        if isinstance(details, dict):
+            details['Style'] = row['Style']
+            details['Size'] = row['Size']
+        else:
+        # Handle cases where 'details' is not a dictionary
+        # You can log this or handle it as per your use case
+            details = {'Style': row['Style'], 'Size': row['Size']}
+    
         return details
 
     df['Product Details'] = df.apply(update_product_details, axis=1, meta=('Product Details', 'object'))
