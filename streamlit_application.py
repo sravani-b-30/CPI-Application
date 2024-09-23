@@ -15,24 +15,12 @@ from concurrent.futures import ThreadPoolExecutor
 import streamlit as st 
 import dask.dataframe as dd
 from dask import delayed
-import os
 
 
 nltk.download('punkt', quiet=True)
 
 from dask.distributed import Client
 client = Client(processes=False, threads_per_worker=4, n_workers=1, memory_limit='3GB')
-# Define a cross-platform temp directory for Dask spilling
-if os.getenv('HOME') == '/home/adminuser':  # Check if running in Streamlit Cloud
-    temp_dir = '/tmp/dask-temp'  # Use '/tmp' in Streamlit Cloud
-else:
-    temp_dir = 'C:/dask-temp' if os.name == 'nt' else '/tmp/dask-temp'  # Local
-
-# Create the directory if it doesn't exist
-os.makedirs(temp_dir, exist_ok=True)
-
-# Initialize Dask client with a memory limit and local spilling
-client = Client(memory_limit='2GB', local_directory=temp_dir)
 
 def format_details(details):
     return "\n".join([f"{key}: {value}" for key, value in details.items()])
