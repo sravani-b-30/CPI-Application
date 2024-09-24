@@ -13,14 +13,10 @@ import pandas as pd
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 import streamlit as st 
-import dask.dataframe as dd
-from dask import delayed
 
 
 nltk.download('punkt', quiet=True)
 
-from dask.distributed import Client
-client = Client(processes=False, threads_per_worker=4, n_workers=1, memory_limit='3GB')
 
 def format_details(details):
     return "\n".join([f"{key}: {value}" for key, value in details.items()])
@@ -221,7 +217,7 @@ def calculate_cpi_score_updated(target_price, competitor_prices):
 
 
 def extract_brand_from_title(title):
-    if dd.isna(title) or not title:
+    if pd.isna(title) or not title:
         return 'unknown'
     return title.split()[0].lower()
 
@@ -265,107 +261,89 @@ def extract_size(title):
 #show_features_df = None
 @st.cache_data
 def load_and_preprocess_data():
-    # Load data using Dask for large datasets
-    df_serp = dd.read_csv("AMZ_SERPDATA_MATTRESS(Modified).csv", blocksize="16MB", assume_missing=True)
-    df_scrapped = dd.read_csv("final_scraped_mattress_updated.csv", blocksize="16MB", assume_missing=True)
+    #global show_features_df
 
-    # Convert ASIN to uppercase in both datasets
+    # Load data only once and perform preprocessing steps
+    df_serp = pd.read_csv("AMZ_SERPDATA_MATTRESS(Modified).csv", on_bad_lines='skip')
+    df_scrapped = pd.read_csv("final_scraped_mattress_updated.csv", on_bad_lines='skip')
+
     df_serp['asin'] = df_serp['asin'].str.upper()
     df_scrapped['ASIN'] = df_scrapped['ASIN'].str.upper()
 
-    # Drop duplicates in Dask
+    # Merge and clean up
     df_serp_cleaned = df_serp.drop_duplicates(subset='asin')
     df_scrapped_cleaned = df_scrapped.drop_duplicates(subset='ASIN')
-
-    # Merging datasets with Dask
-    df_merged_cleaned = df_scrapped_cleaned.merge(df_serp_cleaned[['asin', 'product_title', 'brand']], 
-                                                  left_on='ASIN', right_on='asin', how='left')
-
+    df_merged_cleaned = pd.merge(df_scrapped_cleaned, df_serp_cleaned[['asin', 'product_title', 'brand']],
+                                 left_on='ASIN', right_on='asin', how='left')
     df_merged_cleaned = df_merged_cleaned.drop('asin', axis=1)
 
     # Load additional dataset for time-series analysis
-    df2 = dd.read_csv("price_data_sept_cleaned.csv", blocksize="16MB", assume_missing=True)
+    df2 = pd.read_csv("price_data_sept_cleaned.csv")
+    # df2 = df2.drop_duplicates(subset=['asin'], keep='first')
     df2['asin'] = df2['asin'].str.upper()
+    df_merged_cleaned['ASIN'] = df_merged_cleaned['ASIN'].str.upper()
 
-    # Merge competitor prices with df2 using Dask
-    df = df_merged_cleaned.merge(df2[['asin', 'price', 'date']], left_on='ASIN', right_on='asin', how='left')
+    # Merge competitor prices with df2
+    df = pd.merge(df_merged_cleaned, df2[['asin', 'price', 'date']], left_on='ASIN', right_on='asin', how='left')
+    # Parse the 'Product Details', 'Glance Icon Details', 'Option', and 'Drop Down' columns
+    df['Product Details'] = df['Product Details'].apply(parse_dict_str)
+    df['Glance Icon Details'] = df['Glance Icon Details'].apply(parse_dict_str)
 
-    # Parse the 'Product Details' and 'Glance Icon Details' columns using Dask's apply function
-    df['Product Details'] = df['Product Details'].apply(parse_dict_str, meta=('Product Details', 'object'))
-    df['Glance Icon Details'] = df['Glance Icon Details'].apply(parse_dict_str, meta=('Glance Icon Details', 'object'))
+    df['Style'] = df['product_title'].apply(extract_style)
+    df['Size'] = df['product_title'].apply(extract_size)
 
-    # Apply the extract_style and extract_size functions using Dask
-    df['Style'] = df['product_title'].apply(extract_style, meta=('Style', 'object'))
-    df['Size'] = df['product_title'].apply(extract_size, meta=('Size', 'object'))
-
-    # Function to update product details, using Dask's row-wise apply
     def update_product_details(row):
         details = row['Product Details']
-        # Check if 'details' is a dictionary
-        if isinstance(details, dict):
-            details['Style'] = row['Style']
-            details['Size'] = row['Size']
-        else:
-        # Handle cases where 'details' is not a dictionary
-        # You can log this or handle it as per your use case
-            details = {'Style': row['Style'], 'Size': row['Size']}
-    
+        details['Style'] = row['Style']
+        details['Size'] = row['Size']
         return details
 
-    df['Product Details'] = df.apply(update_product_details, axis=1, meta=('Product Details', 'object'))
+    df['Product Details'] = df.apply(update_product_details, axis=1)
 
-    # Extract dimensions from 'Product Details' using Dask
     def extract_dimensions(details):
+        # Check if 'Product Dimensions' exists in the dictionary
         if isinstance(details, dict):
             return details.get('Product Dimensions', None)
         return None
 
-    df['Product Dimensions'] = df['Product Details'].apply(extract_dimensions, meta=('Product Dimensions', 'object'))
+    # Create a new column 'Product Dimensions' by extracting from 'Product Details'
+    df['Product Dimensions'] = df['Product Details'].apply(extract_dimensions)
 
-    # Load the reference data for size and style
-    reference_df = dd.read_csv('product_dimension_size_style_reference.csv', blocksize="64MB", assume_missing=True)
+    reference_df = pd.read_csv('product_dimension_size_style_reference.csv')
 
-    # Merge the reference data to fill missing size and style values
     merged_df = df.merge(reference_df, on='Product Dimensions', how='left', suffixes=('', '_ref'))
 
-    # Fill missing values in 'Size' and 'Style'
+    # Fill missing values in 'Size' and 'Style' columns with the values from the reference DataFrame
     merged_df['Size'] = merged_df['Size'].fillna(merged_df['Size_ref'])
     merged_df['Style'] = merged_df['Style'].fillna(merged_df['Style_ref'])
 
-    # Convert 'date' to datetime format
-    merged_df['date'] = dd.to_datetime(merged_df['date'])
 
-    # Compute the maximum date and filter the DataFrame
-    df_ext = merged_df[merged_df['date'] == merged_df['date'].max()]
+    merged_df['date'] = pd.to_datetime(merged_df['date'])
+    df_ext = merged_df[merged_df['date']==merged_df['date'].max()]
 
-    # Add new columns for extracted size and style
-    df_ext['size_extracted'] = df_ext['Size'].notnull()
-    df_ext['style_extracted'] = df_ext['Style'].notnull()
+    df_ext.loc[:,'size_extracted'] = df_ext['Size'].notnull()
+    df_ext.loc[:,'style_extracted'] = df_ext['Style'].notnull()
 
-    # Apply extraction scenario logic using Dask
-    df_ext['extraction_scenario'] = df_ext.apply(
+    df_ext.loc[:,'extraction_scenario'] = df_ext.apply(
         lambda row: (
             'Both Size and Style Extracted' if row['size_extracted'] and row['style_extracted'] else
             'Neither Size nor Style Extracted' if not row['size_extracted'] and not row['style_extracted'] else
             'Only Size Extracted' if row['size_extracted'] and not row['style_extracted'] else
             'Only Style Extracted'
-        ), axis=1, meta=('extraction_scenario', 'object')
+        ), axis=1
     )
 
-    # Compute value counts for the extraction scenarios
-    scenario_counts = df_ext['extraction_scenario'].value_counts().compute()
+    scenario_counts = df_ext['extraction_scenario'].value_counts()
 
-    # Print the extraction scenario counts and percentages
-    total_products = df_ext.shape[0].compute()
+    total_products = df_ext.shape[0]
     scenario_percentages = (scenario_counts / total_products) * 100
 
     for scenario, count in scenario_counts.items():
         percentage = scenario_percentages[scenario]
         print(f"{scenario}: {count} products ({percentage:.2f}%)")
 
-    # Create final dataframes based on extraction scenario
     output_columns = ['ASIN', 'product_title', 'Drop Down', 'Product Details', 'Glance Icon Details', 'Description',
-                      'Option', 'Rating', 'Review Count', 'Size', 'Style', 'Product Dimensions', 'Size_ref', 'Style_ref']
+                      'Option', 'Rating', 'Review Count','Size','Style','Product Dimensions','Size_ref','Style_ref']
 
     both_extracted_df = df_ext[df_ext['extraction_scenario'] == 'Both Size and Style Extracted']
     only_size_extracted_df = df_ext[df_ext['extraction_scenario'] == 'Only Size Extracted']
@@ -381,7 +359,7 @@ def load_and_preprocess_data():
 
     df_d = df[['ASIN', 'Size', 'Style']].drop_duplicates(subset=['ASIN'])
     combinations_df = df_d[['Size', 'Style']]
-    combination_counts = combinations_df.groupby(['Size', 'Style']).size().compute()
+    combination_counts = combinations_df.value_counts()
     combination_counts_df = combination_counts.reset_index(name='count')
     combination_counts_df = combination_counts_df.sort_values(by='count', ascending=False)
     #combination_counts_df.to_csv('combination_zero.csv')
@@ -390,9 +368,7 @@ def load_and_preprocess_data():
 
     #df.to_csv('processed_data.csv',index=False)
     #show_features_df = df.copy()
-
-    # Return the computed dataframe
-    return df.compute()
+    return df
 
 # Use session state to store the DataFrame and ensure it's available across sessions
 if 'show_features_df' not in st.session_state:
@@ -418,77 +394,72 @@ def check_compulsory_features_match(target_details, compare_details, compulsory_
 
 def find_similar_products(asin, price_min, price_max, df, compulsory_features, same_brand_option):
     print(compulsory_features)
-    
-    # Apply brand extraction using Dask's apply
-    df['identified_brand'] = df['product_title'].apply(extract_brand_from_title, meta=('identified_brand', 'object'))
+    df['identified_brand'] = df['product_title'].apply(extract_brand_from_title)
 
-    # Filter for the target product and compute it
-    target_product = df[df['ASIN'] == asin].compute().iloc[0]
-    
+    target_product = df[df['ASIN'] == asin].iloc[0]
     print(target_product)
+    print("product")
+    print(type(target_product))
+    # print(type(target_product('Option', {})))
     target_details = {**target_product['Product Details'], **target_product['Glance Icon Details']}
+    print(target_details)
+
     target_brand = target_product['identified_brand']
     target_thickness = extract_thickness(target_details.get('Product Dimensions', ''))
     target_title = str(target_product['product_title']).lower()
     target_desc = str(target_product['Description']).lower()
 
-    # Function to process each partition
-    def process_row(partition, target_details, target_brand, target_title, target_desc, target_thickness, price_min, price_max, compulsory_features, same_brand_option):
-        similarities = []
-        unique_asins = set()
-        seen_combinations = set()
-        
-        for index, row in partition.iterrows():
-            if row['ASIN'] == asin:
-                continue
-            compare_brand = row['identified_brand']
-            if same_brand_option == 'only' and compare_brand != target_brand:
-                continue
-            if same_brand_option == 'omit' and compare_brand == target_brand:
-                continue
-            if price_min <= row['price'] <= price_max:
-                compare_details = {**row['Product Details'], **row['Glance Icon Details']}
-                compare_thickness = extract_thickness(compare_details.get('Product Dimensions', ''))
-                compare_title = str(row['product_title']).lower()
-                compare_desc = str(row['Description']).lower()
+    similarities = []
+    unique_asins = set()
+    seen_combinations = set()
 
-                compulsory_match = check_compulsory_features_match(target_details, compare_details, compulsory_features)
+    for index, row in df.iterrows():
+        if row['ASIN'] == asin:
+            continue
+        compare_brand = row['identified_brand']
+        if same_brand_option == 'only' and compare_brand != target_brand:
+            continue
+        if same_brand_option == 'omit' and compare_brand == target_brand:
+            continue
+        if price_min <= row['price'] <= price_max:
+            # print(type(row('Option',{})))
+            compare_details = {**row['Product Details'], **row['Glance Icon Details']}
 
-                if compulsory_match:
-                    asin = row['ASIN']
-                    combination = (compare_title, row['price'], str(compare_details))
+            compare_thickness = extract_thickness(compare_details.get('Product Dimensions', ''))
+            compare_title = str(row['product_title']).lower()
+            compare_desc = str(row['Description']).lower()
 
-                    if combination not in seen_combinations and asin not in unique_asins:
+
+            compulsory_match = check_compulsory_features_match(target_details, compare_details, compulsory_features)
+
+            if compulsory_match:
+                asin = row['ASIN']
+                # Adjust the combination to include title, price, and product details
+                combination = (compare_title, row['price'], str(compare_details))
+
+                if combination not in seen_combinations:  # Check if this combination has been seen before
+                    if asin not in unique_asins:
                         details_score, title_score, desc_score, details_comparison, title_comparison, desc_comparison = calculate_similarity(
                             target_details, compare_details, target_title, compare_title, target_desc, compare_desc
                         )
                         weighted_score = calculate_weighted_score(details_score, title_score, desc_score)
                         if weighted_score >= 0:
                             similarities.append(
-                                (asin, row['product_title'], row['price'], weighted_score, details_score, title_score,
-                                 desc_score, compare_details, details_comparison, title_comparison, desc_comparison,
-                                 compare_brand))
+                                (asin, row['product_title'], row['price'], weighted_score, details_score,
+                                 title_score, desc_score, compare_details, details_comparison, title_comparison,
+                                 desc_comparison, compare_brand))
                         unique_asins.add(asin)
-                        seen_combinations.add(combination)
-        
-        return similarities
+                        seen_combinations.add(combination)  # Mark this combination as seen
 
-    # Apply to each partition
-    similarities = df.map_partitions(
-        process_row,
-        target_details=target_details, target_brand=target_brand, target_title=target_title, target_desc=target_desc,
-        target_thickness=target_thickness, price_min=price_min, price_max=price_max, compulsory_features=compulsory_features,
-        same_brand_option=same_brand_option
-    ).compute()
-
-    # Sort and return the result as a Pandas DataFrame
     similarities = sorted(similarities, key=lambda x: x[3], reverse=True)
+    print(len(similarities))
     similarities_df = pd.DataFrame(similarities, columns=[
         'ASIN', 'Product Title', 'Price', 'Weighted Score', 'Details Score',
         'Title Score', 'Description Score', 'Compare Details', 'Details Comparison',
         'Title Comparison', 'Description Comparison', 'Brand'
     ])
-    return similarities_df
+    #similarities_df.to_csv('similarity_df.csv')
+    return similarities
 
 def run_analysis(asin, price_min, price_max, target_price, compulsory_features, same_brand_option, df):
     similar_products = find_similar_products(asin, price_min, price_max, df, compulsory_features, same_brand_option)
@@ -496,8 +467,9 @@ def run_analysis(asin, price_min, price_max, target_price, compulsory_features, 
     competitor_prices = np.array(prices)
     cpi_score = calculate_cpi_score(target_price, competitor_prices)
     cpi_score_dynamic = calculate_cpi_score_updated(target_price, competitor_prices)
+    target_product = df[df['ASIN'] == asin].iloc[0]
     num_competitors_found = len(similar_products)
-    target_product = df[df['ASIN'] == asin].compute().iloc[0]
+    target_product = df[df['ASIN'] == asin].iloc[0]
     size = target_product['Product Details'].get('Size', 'N/A')
     product_dimension = target_product['Product Details'].get('Product Dimensions', 'N/A')
 
@@ -560,10 +532,6 @@ def show_features(asin):
 def perform_scatter_plot(asin, target_price, price_min, price_max, compulsory_features, same_brand_option, df):
     # Find similar products
     similar_products = find_similar_products(asin, price_min, price_max, df, compulsory_features, same_brand_option)
-    
-    # Ensure df is a Pandas DataFrame before accessing rows
-    if isinstance(df, dd.DataFrame):
-        df = df.compute()
 
     # Retrieve target product information
     target_product = df[df['ASIN'] == asin].iloc[0]
@@ -651,15 +619,13 @@ def perform_scatter_plot(asin, target_price, price_min, price_max, compulsory_fe
     # Analyze size/style combinations for competitors
     df_d = df[['ASIN', 'Size', 'Style']].drop_duplicates(subset=['ASIN'])
     combinations_df = df_d[['Size', 'Style']]
-    combination_counts = combinations_df.value_counts().compute() if isinstance(combinations_df, dd.DataFrame) else combinations_df.value_counts()
+    combination_counts = combinations_df.value_counts()
     combination_counts_df = combination_counts.reset_index(name='count')
     combination_counts_df = combination_counts_df.sort_values(by='count', ascending=False)
 
     # Filter for competitors with the same size and style
     filtered_df = df[(df['Size'] == target_size) & (df['Style'] == target_style)]
     filtered_df['date'] = pd.to_datetime(filtered_df['date'], errors='coerce')
-    if isinstance(filtered_df, dd.DataFrame):
-        filtered_df = filtered_df.compute()
     filtered_df = filtered_df[filtered_df['date'] == filtered_df['date'].max()]
     price_null_count = filtered_df['price'].isnull().sum()
 
@@ -741,10 +707,10 @@ def process_date(df2, asin, date_str, price_min, price_max, compulsory_features,
     This function processes data for a single date and returns the results.
     """
     df_combined = df2.copy()
-    df_combined['date'] = dd.to_datetime(df_combined['date'], format='%Y-%m-%d')
-    df_current_day = df_combined[df_combined['date'] == date_str].compute()
+    df_combined['date'] = pd.to_datetime(df_combined['date'], format='%Y-%m-%d')
+    df_current_day = df_combined[df_combined['date'] == date_str]
 
-    if df_current_day.shape[0] == 0:
+    if df_current_day.empty:
         st.error(f"No data found for date: {date_str}")
         return None
 
@@ -793,14 +759,10 @@ def calculate_and_plot_cpi(df2, asin_list, start_date, end_date, price_min, pric
             dates_to_process.append(current_date)
             current_date += timedelta(days=1)
 
-        # Compute df2 if it's a Dask DataFrame
-        if isinstance(df2, dd.DataFrame):
-            df2 = df2.compute()
-
         # Use ThreadPoolExecutor for parallel processing
     with ThreadPoolExecutor() as executor:
         futures = [
-            executor.submit(process_date, df2, asin, dd.to_datetime(current_date), price_min, price_max, compulsory_features, same_brand_option)
+            executor.submit(process_date, df2, asin, pd.to_datetime(current_date), price_min, price_max, compulsory_features, same_brand_option)
             for current_date in dates_to_process
         ]
         for future in futures:
@@ -823,7 +785,7 @@ def calculate_and_plot_cpi(df2, asin_list, start_date, end_date, price_min, pric
                 st.session_state['competitor_files'][date_str] = csv_filename
 
             # Create result DataFrame and store in session state
-            result_df = dd.DataFrame(all_results,
+            result_df = pd.DataFrame(all_results,
                                  columns=['Date', 'ASIN', 'Target Price', 'CPI Score', 'Number Of Competitors Found',
                                           'Size', 'Product Dimension', 'Competitor Prices', 'Dynamic CPI'])
             st.session_state['result_df'] = result_df
@@ -837,12 +799,12 @@ def calculate_and_plot_cpi(df2, asin_list, start_date, end_date, price_min, pric
 
     # Load additional data for merging (ads data, for example)
     try:
-        napqueen_df = dd.read_csv("ads_data_sep15.csv")
-        napqueen_df['date'] = dd.to_datetime(napqueen_df['date'], format='%d-%m-%Y', errors='coerce')
+        napqueen_df = pd.read_csv("ads_data_sep15.csv")
+        napqueen_df['date'] = pd.to_datetime(napqueen_df['date'], format='%d-%m-%Y', errors='coerce')
         napqueen_df = napqueen_df.rename(columns=({'date': 'Date', 'asin': 'ASIN'}))
 
-        result_df['Date'] = dd.to_datetime(result_df['Date'], format='%Y-%m-%d')
-        result_df = dd.merge(result_df, napqueen_df[['Date', 'ASIN', 'ad_spend', 'orderedunits']], on=['Date', 'ASIN'], how='left')
+        result_df['Date'] = pd.to_datetime(result_df['Date'], format='%Y-%m-%d')
+        result_df = pd.merge(result_df, napqueen_df[['Date', 'ASIN', 'ad_spend', 'orderedunits']], on=['Date', 'ASIN'], how='left')
 
         #st.success("Merging successful! Displaying the merged dataframe:")
         #st.dataframe(result_df)
@@ -862,13 +824,13 @@ def calculate_and_plot_cpi(df2, asin_list, start_date, end_date, price_min, pric
         st.write(f"Competitor Data for {date_str}")
         try:
             # Load and display the CSV file for this date
-            competitor_data = dd.read_csv(csv_filename)
+            competitor_data = pd.read_csv(csv_filename)
             st.dataframe(competitor_data)
         except Exception as e:
             st.error(f"Error loading file for {date_str}: {e}")
 
 def plot_competitor_vs_null_analysis(competitor_count_per_day, null_price_count_per_day, start_date, end_date):
-    dates = dd.date_range(start=start_date, end=end_date)
+    dates = pd.date_range(start=start_date, end=end_date)
 
     fig, ax1 = plt.subplots(figsize=(12, 6))
 
@@ -894,9 +856,7 @@ def plot_results(result_df, asin_list, start_date, end_date):
 
 
     #result_df.to_csv('plot_csv.csv')
-    # If result_df is a Dask DataFrame, compute it to convert to Pandas
-    if isinstance(result_df, dd.DataFrame):
-        result_df = result_df.compute()
+
 
     for asin in asin_list:
         asin_results = result_df[result_df['ASIN'] == asin]
@@ -984,11 +944,7 @@ def run_analysis_button(df, asin, price_min, price_max, target_price, start_date
 
     st.write("Inside Analysis")
 
-    # If df is a Dask DataFrame, compute it
-    if isinstance(df, dd.DataFrame):
-        df = df.compute()
-
-    df['date'] =pd.to_datetime(df['date'], errors='coerce')
+    df['date'] = pd.to_datetime(df['date'], errors='coerce')
     df_recent = df[df['date'] == df['date'].max()]
     df_recent = df_recent.drop_duplicates(subset=['asin'])
 
@@ -1030,10 +986,6 @@ def run_analysis_button(df, asin, price_min, price_max, target_price, start_date
 
 # Load data globally before starting the Streamlit app
 df = load_and_preprocess_data()
-
-# If df is a Dask DataFrame, compute it
-if isinstance(df, dd.DataFrame):
-    df = df.compute()
 
 # Streamlit UI for ASIN Competitor Analysis
 st.title("ASIN Competitor Analysis")
