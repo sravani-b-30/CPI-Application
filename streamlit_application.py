@@ -278,7 +278,7 @@ def load_and_preprocess_data():
     df_merged_cleaned = df_merged_cleaned.drop('asin', axis=1)
 
     # Load additional dataset for time-series analysis
-    df2 = pd.read_csv("price_data_sept_cleaned.csv")
+    df2 = pd.read_csv("price_data_september.csv")
     # df2 = df2.drop_duplicates(subset=['asin'], keep='first')
     df2['asin'] = df2['asin'].str.upper()
     df_merged_cleaned['ASIN'] = df_merged_cleaned['ASIN'].str.upper()
