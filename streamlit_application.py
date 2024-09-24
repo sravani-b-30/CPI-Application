@@ -986,6 +986,19 @@ def run_analysis_button(df, asin, price_min, price_max, target_price, start_date
 # Load data globally before starting the Streamlit app
 df = load_and_preprocess_data()
 
+# Define a function to clear session state when dates change
+def clear_session_state_on_date_change():
+    if 'prev_start_date' not in st.session_state:
+        st.session_state['prev_start_date'] = start_date
+        st.session_state['prev_end_date'] = end_date
+    else:
+        if st.session_state['prev_start_date'] != start_date or st.session_state['prev_end_date'] != end_date:
+            # Clear the result_df and competitor_files when date range changes
+            st.session_state['result_df'] = None  # Clear cached result
+            st.session_state['competitor_files'] = {}  # Clear cached competitor data
+            st.session_state['prev_start_date'] = start_date
+            st.session_state['prev_end_date'] = end_date
+
 # Streamlit UI for ASIN Competitor Analysis
 st.title("ASIN Competitor Analysis")
 
@@ -1017,6 +1030,10 @@ if include_dates:
         end_date = st.date_input("End Date", value=None)  # Ensure default is empty
 else:
     start_date, end_date = None, None
+
+
+# Add the session state clearing logic at the beginning of the app
+clear_session_state_on_date_change()
 
 # Radio buttons for same brand option
 same_brand_option = st.radio("Same Brand Option", ('all', 'only', 'omit'))
@@ -1054,6 +1071,21 @@ if asin in df['ASIN'].values:
 # Collect selected compulsory features
 compulsory_features = [feature for feature, selected in compulsory_features_vars.items() if selected]
 
+# Store input values in session state for use in re-runs
+if 'asin_list' not in st.session_state:
+    st.session_state['asin_list'] = [asin]
+if 'price_min' not in st.session_state:
+    st.session_state['price_min'] = price_min
+if 'price_max' not in st.session_state:
+    st.session_state['price_max'] = price_max
+if 'start_date' not in st.session_state:
+    st.session_state['start_date'] = start_date
+if 'end_date' not in st.session_state:
+    st.session_state['end_date'] = end_date
+if 'compulsory_features' not in st.session_state:
+    st.session_state['compulsory_features'] = compulsory_features
+if 'same_brand_option' not in st.session_state:
+    st.session_state['same_brand_option'] = same_brand_option
 
 if st.button("Analyze"):
     run_analysis_button(df, asin, price_min, price_max, target_price, start_date, end_date, same_brand_option, compulsory_features)
