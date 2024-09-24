@@ -264,7 +264,7 @@ def load_and_preprocess_data():
     #global show_features_df
 
     # Load data only once and perform preprocessing steps
-    df_serp = pd.read_csv("AMZ_SERPDATA_MATTRESS(Modified).csv", on_bad_lines='skip')
+    df_serp = pd.read_csv("AMZ_MATTRESS_TITLES.csv", on_bad_lines='skip')
     df_scrapped = pd.read_csv("final_scraped_mattress_updated.csv", on_bad_lines='skip')
 
     df_serp['asin'] = df_serp['asin'].str.upper()
