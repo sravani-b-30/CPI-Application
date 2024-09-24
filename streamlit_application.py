@@ -736,7 +736,7 @@ def process_date(df2, asin, date_str, price_min, price_max, compulsory_features,
 
 def calculate_and_plot_cpi(df2, asin_list, start_date, end_date, price_min, price_max, compulsory_features, same_brand_option):
     asin = asin_list[0]
-
+    dates_to_process = []
     # Initialize session state variables
     if 'result_df' not in st.session_state:
         st.session_state['result_df'] = None
@@ -754,7 +754,6 @@ def calculate_and_plot_cpi(df2, asin_list, start_date, end_date, price_min, pric
 
         # Process each day in the date range
         current_date = start_date
-        dates_to_process = []
         while current_date <= end_date:
             dates_to_process.append(current_date)
             current_date += timedelta(days=1)
