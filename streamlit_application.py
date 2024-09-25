@@ -646,9 +646,9 @@ def perform_scatter_plot(asin, target_price, price_min, price_max, compulsory_fe
     st.write(f"Competitor Count: {len(similar_products)}")
     st.write(f"Target Product's Size: {target_size}")
     st.write(f"Target Product's Style: {target_style}")
-    st.write(f"Count of Target Size-Style Combination On The Day Of Analysis: {target_combination_count}")
     st.write(f"Number of Competitors With Null Price: {price_null_count}")
-
+    #st.write(f"Count of Target Size-Style Combination On The Day Of Analysis: {target_combination_count}")
+    
     # CPI Score Polar Plot
     competitor_prices = np.array(prices)
     cpi_score = calculate_cpi_score(target_price, competitor_prices)
